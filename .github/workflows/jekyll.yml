@@ -25,6 +25,8 @@ jobs:
   # Build job
   build:
     runs-on: ubuntu-24.04
+    outputs:
+      pages_ready: ${{ steps.pages.outcome == 'success' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -43,21 +45,27 @@ jobs:
       - name: Minify JS files
         run: |
           uglifyjs assets/js/plugins/jquery.greedy-navigation.js assets/js/_main.js assets/js/theme.js -c -m -o assets/js/main.min.js
+      - name: Build with Jekyll
+        # Outputs to the './_site' directory by default; site lives at /LJT-Homepage
+        run: bundle exec jekyll build --baseurl "/LJT-Homepage"
+        env:
+          JEKYLL_ENV: production
       - name: Configure GitHub Pages
         id: pages
         uses: actions/configure-pages@v6.0.0
+        continue-on-error: true
         with:
-          enablement: true # Enable GitHub Pages (Actions source) on this fork if not already enabled
-      - name: Build with Jekyll
-        # Outputs to the './_site' directory by default
-        run: bundle exec jekyll build --baseurl "${{ steps.pages.outputs.base_path }}"
-        env:
-          JEKYLL_ENV: production
+          enablement: true # Try to enable GitHub Pages (Actions source); requires Pages to be enabled once in Settings if the token lacks admin rights
+      - name: GitHub Pages not enabled yet
+        if: steps.pages.outcome != 'success'
+        run: echo "::warning::GitHub Pages is not enabled for this repository yet. Enable it once under Settings > Pages (Source: GitHub Actions), then re-run this workflow to deploy the site."
       - name: Upload GitHub Pages artifact
+        if: steps.pages.outcome == 'success'
         uses: actions/upload-pages-artifact@v5.0.0
 
-  # Deployment job
+  # Deployment job (runs once GitHub Pages is enabled for the repository)
   deploy:
+    if: needs.build.outputs.pages_ready == 'true'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
